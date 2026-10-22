@@ -1,10 +1,12 @@
 from PIL import Image
 import io
+import json
 import streamlit as st
 import numpy as np
 import pandas as pd
 import torch
 import base64
+import paho.mqtt.client as paho
 
 
 st.set_page_config(
@@ -12,6 +14,41 @@ st.set_page_config(
     page_icon="🔍",
     layout="wide"
 )
+
+# ---------- Configuración MQTT (igual que en el ESP32 de Wokwi) ----------
+BROKER = "broker.mqttdashboard.com"
+PORT = 1883
+# Distinto al ID del ESP32 ("Lizalda"): si fueran iguales, el broker
+# desconectaría a uno de los dos cada vez que el otro entrara.
+CLIENT_ID = "Lizalda_App"
+TOPIC_GESTO = "lizalda/IMIA"
+
+# Si se detecta este objeto se envía "Abre"; si no, "Cierra" (cámbialo a tu gusto)
+OBJETO_ABRE = "person"
+
+
+def crear_cliente():
+    """Compatible con paho-mqtt 1.x y 2.x."""
+    try:
+        return paho.Client(paho.CallbackAPIVersion.VERSION1, CLIENT_ID)
+    except AttributeError:
+        return paho.Client(CLIENT_ID)
+
+
+def publicar_gesto(comando):
+    """Conecta, publica, espera confirmación y se desconecta."""
+    try:
+        client = crear_cliente()
+        client.connect(BROKER, PORT, keepalive=30)
+        client.loop_start()
+        info = client.publish(TOPIC_GESTO, json.dumps({"gesto": comando}))
+        info.wait_for_publish(timeout=5)
+        client.loop_stop()
+        client.disconnect()
+        st.toast(f"Gesto enviado: {comando}")
+    except Exception as e:
+        st.error(f"No se pudo enviar el gesto: {e}")
+
 
 @st.cache_resource
 def load_model():
@@ -66,6 +103,13 @@ if model:
         boxes     = result.boxes
         annotated = result.plot()              # devuelve BGR numpy array
         annotated_rgb = annotated[:, :, ::-1]  # BGR → RGB sin cv2
+
+        # Enviar comando al ESP32 según lo detectado
+        nombres_detectados = (
+            {model.names[int(b.cls.item())] for b in boxes}
+            if boxes is not None else set()
+        )
+        publicar_gesto("Abre" if OBJETO_ABRE in nombres_detectados else "Cierra")
 
         col1, col2 = st.columns(2)
 
