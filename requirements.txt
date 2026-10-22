@@ -1,0 +1,12 @@
+streamlit
+streamlit-webrtc
+numpy<2
+pandas
+Pillow
+opencv-python-headless
+tensorflow==2.15.1
+keras==2.15.0
+torch==2.5.1
+torchvision==0.20.1
+ultralytics
+setuptools
